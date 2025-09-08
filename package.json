@@ -1,0 +1,10 @@
+{
+  "name": "save-json-content",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Build scripts for zipping the SAVE JSON WordPress plugin",
+  "scripts": {
+    "build": "node scripts/build-zip.js"
+  }
+}
+
