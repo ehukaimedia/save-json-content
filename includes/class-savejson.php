@@ -353,6 +353,49 @@ class Plugin {
                 'sanitize_callback' => 'sanitize_text_field',
                 'auth_callback' => function() { return current_user_can('edit_posts'); },
             ]);
+            // Social/meta extras for REST editing
+            register_post_meta($type, self::META_SOC_TITLE, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_text_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+            register_post_meta($type, self::META_SOC_DESC, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_textarea_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+            register_post_meta($type, self::META_SOC_IMAGE, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'esc_url_raw',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+            register_post_meta($type, self::META_TW_CARD, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_text_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+            register_post_meta($type, self::META_TW_SITE, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_text_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+            register_post_meta($type, self::META_TW_CREATOR, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_text_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
         }
     }
 
@@ -657,6 +700,45 @@ class Plugin {
         $canonical = $post_id ? (string) get_post_meta($post_id, self::META_CANONICAL, true) : '';
         if ($canonical === '') $canonical = $url;
 
+        // Featured image
+        $post_image = '';
+        if ($post_id) {
+            $thumb_id = get_post_thumbnail_id($post_id);
+            if ($thumb_id) {
+                $post_image = (string) wp_get_attachment_image_url($thumb_id, 'full');
+            }
+        }
+
+        // Filterable meta context
+        $ctx = apply_filters('savejson_meta_context', [
+            'site' => $site,
+            'url'  => $url,
+            'type' => $type,
+            'title'=> $title,
+            'desc' => $desc,
+            'soc_title' => $soc_title,
+            'soc_desc'  => $soc_desc,
+            'soc_image' => $soc_image,
+            'tw_card'   => $tw_card,
+            'tw_site'   => $tw_site,
+            'tw_creator'=> $tw_creator,
+            'canonical' => $canonical,
+            'post_image'=> $post_image,
+        ], $post_id);
+        $site       = (string) ($ctx['site'] ?? $site);
+        $url        = (string) ($ctx['url'] ?? $url);
+        $type       = (string) ($ctx['type'] ?? $type);
+        $title      = (string) ($ctx['title'] ?? $title);
+        $desc       = (string) ($ctx['desc'] ?? $desc);
+        $soc_title  = (string) ($ctx['soc_title'] ?? $soc_title);
+        $soc_desc   = (string) ($ctx['soc_desc'] ?? $soc_desc);
+        $soc_image  = (string) ($ctx['soc_image'] ?? $soc_image);
+        $tw_card    = (string) ($ctx['tw_card'] ?? $tw_card);
+        $tw_site    = (string) ($ctx['tw_site'] ?? $tw_site);
+        $tw_creator = (string) ($ctx['tw_creator'] ?? $tw_creator);
+        $canonical  = (string) ($ctx['canonical'] ?? $canonical);
+        $post_image = (string) ($ctx['post_image'] ?? $post_image);
+
         // Basic & OG
         echo '<link rel="canonical" href="' . esc_url($canonical) . "\" />\n";
         if ($post_id) {
@@ -718,7 +800,7 @@ class Plugin {
 
         if ($post_id) {
             $typeNode = is_singular('post') ? 'Article' : 'WebPage';
-            $graph[] = [
+            $node = [
                 '@context' => 'https://schema.org',
                 '@type'    => $typeNode,
                 'mainEntityOfPage' => [
@@ -735,6 +817,11 @@ class Plugin {
                 ],
                 'publisher'     => ['@id' => $org_id],
             ];
+            if ($post_image !== '') {
+                $node['image'] = $post_image;
+                $node['primaryImageOfPage'] = $post_image;
+            }
+            $graph[] = $node;
         }
 
         // FAQ JSON-LD
@@ -766,6 +853,8 @@ class Plugin {
             }
         }
 
+        // Extensibility: filter the final graph
+        $graph = apply_filters('savejson_graph', $graph, $post_id);
         echo "<script type=\"application/ld+json\">" . wp_json_encode(count($graph) === 1 ? $graph[0] : ['@graph' => $graph], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) . "</script>\n";
     }
 

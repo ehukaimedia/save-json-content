@@ -58,6 +58,94 @@ class Admin {
         register_setting('savejson_options_group', 'savejson_options');
     }
 
+    private function sanitize_options(array $incoming) : array {
+        $clean = [];
+        // Templates
+        if (isset($incoming['templates']) && is_array($incoming['templates'])) {
+            $t = $incoming['templates'];
+            $ct = function($v){ return is_string($v) ? sanitize_text_field($v) : ''; };
+            $clean['templates'] = [
+                'separator' => isset($t['separator']) ? sanitize_text_field((string)$t['separator']) : ' - ',
+            ];
+            foreach (['home','post','page','category','post_tag'] as $ctx) {
+                if (isset($t[$ctx]) && is_array($t[$ctx])) {
+                    $clean['templates'][$ctx] = [
+                        'title' => isset($t[$ctx]['title']) ? $ct($t[$ctx]['title']) : '',
+                        'meta'  => isset($t[$ctx]['meta'])  ? $ct($t[$ctx]['meta'])  : '',
+                    ];
+                }
+            }
+        }
+
+        // Site representation
+        if (isset($incoming['site']) && is_array($incoming['site'])) {
+            $s = $incoming['site'];
+            $sameAs = [];
+            if (!empty($s['sameAs'])) {
+                $lines = is_array($s['sameAs']) ? $s['sameAs'] : explode("\n", (string)$s['sameAs']);
+                foreach ($lines as $line) {
+                    $u = esc_url_raw(trim((string)$line));
+                    if ($u !== '') { $sameAs[$u] = true; }
+                }
+            }
+            $clean['site'] = [
+                'entity' => (isset($s['entity']) && in_array($s['entity'], ['organization','person'], true)) ? $s['entity'] : 'organization',
+                'name'   => isset($s['name']) ? sanitize_text_field((string)$s['name']) : get_bloginfo('name'),
+                'logo'   => isset($s['logo']) ? esc_url_raw((string)$s['logo']) : '',
+                'sameAs' => array_keys($sameAs),
+            ];
+        }
+
+        // Social defaults
+        if (isset($incoming['social']) && is_array($incoming['social'])) {
+            $so = $incoming['social'];
+            $tw = isset($so['twitter']) && is_array($so['twitter']) ? $so['twitter'] : [];
+            $clean['social'] = [
+                'default_image' => isset($so['default_image']) ? esc_url_raw((string)$so['default_image']) : '',
+                'twitter' => [
+                    'card'    => isset($tw['card']) ? sanitize_text_field((string)$tw['card']) : 'summary_large_image',
+                    'site'    => isset($tw['site']) ? sanitize_text_field((string)$tw['site']) : '',
+                    'creator' => isset($tw['creator']) ? sanitize_text_field((string)$tw['creator']) : '',
+                ],
+            ];
+        }
+
+        // Sitemaps
+        if (isset($incoming['sitemaps']) && is_array($incoming['sitemaps'])) {
+            $sm = $incoming['sitemaps'];
+            $clean['sitemaps'] = [
+                'enabled'        => !empty($sm['enabled']) ? 1 : 0,
+                'include_images' => !empty($sm['include_images']) ? 1 : 0,
+                'types'      => [],
+                'taxonomies' => [],
+                'users'      => !empty($sm['users']) ? 1 : 0,
+            ];
+            foreach (['post','page'] as $t) {
+                $clean['sitemaps']['types'][$t] = !empty($sm['types'][$t]) ? 1 : 0;
+            }
+            foreach (['category','post_tag'] as $tx) {
+                $clean['sitemaps']['taxonomies'][$tx] = !empty($sm['taxonomies'][$tx]) ? 1 : 0;
+            }
+        }
+
+        // RSS
+        if (isset($incoming['rss']) && is_array($incoming['rss'])) {
+            $clean['rss'] = [
+                'before' => isset($incoming['rss']['before']) ? sanitize_textarea_field((string)$incoming['rss']['before']) : '',
+                'after'  => isset($incoming['rss']['after'])  ? sanitize_textarea_field((string)$incoming['rss']['after'])  : '',
+            ];
+        }
+
+        // Flags (internal)
+        if (isset($incoming['flags']) && is_array($incoming['flags'])) {
+            $f = [];
+            foreach ($incoming['flags'] as $k=>$v) { $f[sanitize_key($k)] = (int) !empty($v); }
+            $clean['flags'] = $f;
+        }
+
+        return $clean;
+    }
+
     private function field($name, $value, $label, $type='text', $attrs='') {
         printf('<p><label><strong>%s</strong><br/><input type="%s" name="savejson_options[%s]" value="%s" %s style="width:100%%;"/></label></p>',
             esc_html($label), esc_attr($type), esc_attr($name), esc_attr($value), $attrs
@@ -237,6 +325,9 @@ class Admin {
         echo '<div class="wrap"><h1>'.esc_html__('Tools','save-json-content').'</h1>';
         if (isset($_GET['updated'])) {
             echo '<div class="notice notice-success is-dismissible"><p>'.esc_html__('Changes saved.', 'save-json-content').'</p></div>';
+        }
+        if (isset($_GET['file_error'])) {
+            echo '<div class="notice notice-error is-dismissible"><p>'.esc_html__('Failed to save one or more files. Check filesystem permissions.', 'save-json-content').'</p></div>';
         }
         echo '<h2>'.esc_html__('Bulk Editor (SEO Title & Meta Description)','save-json-content').'</h2>';
         echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">';
@@ -444,7 +535,8 @@ class Admin {
             $incoming['site']['sameAs'] = array_values($lines);
         }
 
-        $opts = array_replace_recursive($this->get_opts(), $incoming);
+        $clean = $this->sanitize_options($incoming);
+        $opts = array_replace_recursive($this->get_opts(), $clean);
         update_option('savejson_options', $opts);
 
         $page = isset($_POST['redirect_to']) ? sanitize_text_field((string) $_POST['redirect_to']) : '';
@@ -468,9 +560,15 @@ class Admin {
         if (!$wp_filesystem) wp_die('Filesystem unavailable');
         $robots_path = ABSPATH . 'robots.txt';
         $hta_path = ABSPATH . '.htaccess';
-        $wp_filesystem->put_contents($robots_path, (string) ($_POST['robots'] ?? ''), FS_CHMOD_FILE);
-        $wp_filesystem->put_contents($hta_path, (string) ($_POST['htaccess'] ?? ''), FS_CHMOD_FILE);
-        wp_safe_redirect(admin_url('admin.php?page=savejson-tools&updated=1'));
+        $ok1 = $wp_filesystem->put_contents($robots_path, (string) ($_POST['robots'] ?? ''), FS_CHMOD_FILE);
+        $ok2 = $wp_filesystem->put_contents($hta_path, (string) ($_POST['htaccess'] ?? ''), FS_CHMOD_FILE);
+        $url = admin_url('admin.php?page=savejson-tools');
+        if ($ok1 && $ok2) {
+            $url = add_query_arg('updated', '1', $url);
+        } else {
+            $url = add_query_arg('file_error', '1', $url);
+        }
+        wp_safe_redirect($url);
         exit;
     }
 

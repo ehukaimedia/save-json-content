@@ -52,6 +52,13 @@ add_action('plugins_loaded', function(){
     }
 });
 
+// Quick link to settings page in Plugins list
+add_filter('plugin_action_links_' . plugin_basename(SAVEJSON_PLUGIN_FILE), function($links){
+    $url = admin_url('admin.php?page=savejson');
+    $links[] = '<a href="' . esc_url($url) . '">' . esc_html__('Settings', 'save-json-content') . '</a>';
+    return $links;
+});
+
 // Activation: add default options if missing
 register_activation_hook(__FILE__, function(){
     $opts = get_option('savejson_options', []);
