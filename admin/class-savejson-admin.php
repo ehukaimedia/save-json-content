@@ -238,6 +238,7 @@ class Admin {
         $o = $this->get_opts();
         $s = $o['site'] ?? [];
         $entity = $s['entity'] ?? 'organization';
+        if (function_exists('wp_enqueue_media')) { wp_enqueue_media(); }
         echo '<div class="wrap"><h1>'.esc_html__('Site Representation','save-json-content').'</h1>';
         echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">';
         wp_nonce_field('savejson_save_settings','savejson_nonce');
@@ -249,13 +250,69 @@ class Admin {
         printf('<option value="person" %s>%s</option>', selected($entity,'person',false), esc_html__('Person','save-json-content'));
         echo '</select></label></p>';
         $this->field('site[name]', $s['name'] ?? get_bloginfo('name'), __('Name','save-json-content'));
-        $this->field('site[logo]', $s['logo'] ?? '', __('Logo URL','save-json-content'), 'url');
+
+        // Logo selector with Media Library support
+        $logo = isset($s['logo']) ? (string) $s['logo'] : '';
+        echo '<p><strong>'.esc_html__('Logo','save-json-content').'</strong><br/>';
+        printf('<input type="url" id="savejson_site_logo" name="savejson_options[site][logo]" value="%s" placeholder="https://example.com/logo.png" style="width:100%%; max-width:520px;"/>', esc_attr($logo));
+        echo '<br/>';
+        echo '<button type="button" class="button" id="savejson_site_logo_btn">'.esc_html__('Select from Media Library','save-json-content').'</button> ';
+        echo '<button type="button" class="button" id="savejson_site_logo_clear">'.esc_html__('Clear','save-json-content').'</button>';
+        echo '<div id="savejson_site_logo_preview" style="margin-top:8px;">';
+        if (!empty($logo)) {
+            echo '<img src="'.esc_url($logo).'" alt="" style="max-width:220px;height:auto;border:1px solid #ddd;" />';
+        }
+        echo '</div>';
+        echo '<p class="description">'.esc_html__('Recommended: square image ≥112×112 (PNG/SVG). Used in Organization/Person schema and may appear in search results.','save-json-content').'</p>';
+        echo '</p>';
+
         // Social profiles (sameAs)
         $sameAs = isset($s['sameAs']) && is_array($s['sameAs']) ? $s['sameAs'] : [];
         echo '<p><strong>'.esc_html__('Social Profiles (one per line)','save-json-content').'</strong><br/>';
         echo '<textarea name="savejson_options[site][sameAs]" rows="5" style="width:100%;">'.esc_textarea(implode("\n", $sameAs)).'</textarea></p>';
+        echo '<p class="description">'.esc_html__('Enter full URLs (https://). Examples: https://twitter.com/yourhandle, https://www.linkedin.com/company/yourcompany/','save-json-content').'</p>';
         submit_button(__('Save Changes','save-json-content'));
-        echo '</form></div>';
+        echo '</form>';
+
+        // Inline JS for Media Library logo picker
+        ?>
+        <script>
+        (function(){
+            var input = document.getElementById('savejson_site_logo');
+            var btn   = document.getElementById('savejson_site_logo_btn');
+            var clear = document.getElementById('savejson_site_logo_clear');
+            var preview = document.getElementById('savejson_site_logo_preview');
+            var frame;
+            function updatePreview(url){
+                if (!preview) return;
+                if (url) {
+                    preview.innerHTML = '<img src="' + url.replace(/"/g,'&quot;') + '" style="max-width:220px;height:auto;border:1px solid #ddd;" />';
+                } else {
+                    preview.innerHTML = '';
+                }
+            }
+            if (btn) {
+                btn.addEventListener('click', function(e){
+                    e.preventDefault();
+                    if (typeof wp === 'undefined' || !wp.media) { alert('<?php echo esc_js(__('Media library is not available.', 'save-json-content')); ?>'); return; }
+                    if (frame) { frame.open(); return; }
+                    frame = wp.media({ title: '<?php echo esc_js(__('Select Site Logo', 'save-json-content')); ?>', library: { type: 'image' }, button: { text: '<?php echo esc_js(__('Use image', 'save-json-content')); ?>' }, multiple: false });
+                    frame.on('select', function(){
+                        var att = frame.state().get('selection').first().toJSON();
+                        var url = (att.sizes && att.sizes.medium && att.sizes.medium.url) || (att.sizes && att.sizes.full && att.sizes.full.url) || att.url;
+                        if (input) { input.value = url || ''; }
+                        updatePreview(url || '');
+                    });
+                    frame.open();
+                });
+            }
+            if (clear) {
+                clear.addEventListener('click', function(e){ e.preventDefault(); if (input) { input.value=''; } updatePreview(''); });
+            }
+        })();
+        </script>
+        <?php
+        echo '</div>';
     }
 
     public function screen_social() {
