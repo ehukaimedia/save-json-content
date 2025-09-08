@@ -128,6 +128,18 @@ class Admin {
             }
         }
 
+        // Archives indexing preferences
+        if (isset($incoming['archives']) && is_array($incoming['archives'])) {
+            $ar = $incoming['archives'];
+            $clean['archives'] = [
+                'index_search'     => !empty($ar['index_search']) ? 1 : 0,
+                'index_404'        => !empty($ar['index_404']) ? 1 : 0,
+                'index_author'     => !empty($ar['index_author']) ? 1 : 0,
+                'index_date'       => !empty($ar['index_date']) ? 1 : 0,
+                'index_attachment' => !empty($ar['index_attachment']) ? 1 : 0,
+            ];
+        }
+
         // RSS
         if (isset($incoming['rss']) && is_array($incoming['rss'])) {
             $clean['rss'] = [
@@ -228,6 +240,20 @@ class Admin {
             printf('<p><label><strong>%s</strong><br/><textarea name="savejson_options[templates][%s][meta]" rows="3" style="width:100%%;" placeholder="%%excerpt%%">%s</textarea></label></p>',
                 esc_html__('Meta description template','save-json-content'), esc_attr($key), esc_textarea($m));
             echo '<p class="description">'.esc_html__('Variables: %%title%%, %%sep%%, %%sitename%%, %%tagline%% (%%sitedesc%%), %%excerpt%%, %%category%%, %%primary_category%%, %%author%%, %%date%%, %%page%%, %%searchphrase%%, %%term_title%%, %%term_description%%, %%cf_{field}%%','save-json-content').'</p>';
+        }
+        echo '<hr/><h2>'.esc_html__('Archives & Special Pages Indexing','save-json-content').'</h2>';
+        $ar = $o['archives'] ?? [];
+        $fields = [
+            'index_search'     => __('Allow indexing of Search results','save-json-content'),
+            'index_404'        => __('Allow indexing of 404 pages','save-json-content'),
+            'index_author'     => __('Allow indexing of Author archives','save-json-content'),
+            'index_date'       => __('Allow indexing of Date archives','save-json-content'),
+            'index_attachment' => __('Allow indexing of Attachment pages','save-json-content'),
+        ];
+        foreach ($fields as $k=>$label) {
+            $val = !empty($ar[$k]);
+            printf('<p><label><input type="checkbox" name="savejson_options[archives][%s]" value="1" %s> %s</label></p>',
+                esc_attr($k), checked($val,true,false), esc_html($label));
         }
         submit_button(__('Save Changes','save-json-content'));
         echo '</form></div>';

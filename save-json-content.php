@@ -101,6 +101,13 @@ register_activation_hook(__FILE__, function(){
                 'creator' => '',
             ],
         ],
+        'archives' => [
+            'index_search'    => false,
+            'index_404'       => false,
+            'index_author'    => true,
+            'index_date'      => false,
+            'index_attachment'=> false,
+        ],
         'sitemaps' => [
             'enabled' => true, // rely on WP core, but expose UI toggles
             'include_images' => true,

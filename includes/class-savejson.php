@@ -695,9 +695,17 @@ class Plugin {
         $tw_creator= $post_id ? (string) get_post_meta($post_id, self::META_TW_CREATOR, true) : '';
         if ($tw_creator === '') $tw_creator = (string) ($opts['social']['twitter']['creator'] ?? '');
 
-        // Canonical
+        // Canonical with pagination awareness
         $canonical = $post_id ? (string) get_post_meta($post_id, self::META_CANONICAL, true) : '';
-        if ($canonical === '') $canonical = $url;
+        $paged = 1;
+        if (is_singular()) {
+            $paged = max(1, (int) get_query_var('page'));
+        } else {
+            $paged = max(1, (int) get_query_var('paged'));
+        }
+        if ($canonical === '') {
+            $canonical = $paged > 1 ? get_pagenum_link($paged) : $url;
+        }
 
         // Featured image
         $post_image = '';
@@ -746,25 +754,61 @@ class Plugin {
             $soc_image = (string) ($opts['social']['default_image'] ?? '');
         }
 
+        // Robots for non-singular contexts per settings
+        $opts = $opts ?? $this->get_options();
+        $archives = isset($opts['archives']) && is_array($opts['archives']) ? $opts['archives'] : [];
+
         // Basic & OG
         echo '<link rel="canonical" href="' . esc_url($canonical) . "\" />\n";
+        $robots_line = '';
         if ($post_id) {
-            $robots = implode(',', $this->robots_content($post_id));
-            if ($robots) {
-                echo '<meta name="robots" content="' . esc_attr($robots) . "\" />\n";
-                echo '<meta name="googlebot" content="' . esc_attr($robots) . "\" />\n";
-            }
+            $robots_line = implode(',', $this->robots_content($post_id));
+        } else {
+            // Archives and special pages
+            $index = true;
+            if (is_search() && empty($archives['index_search'])) { $index = false; }
+            if (is_404()     && empty($archives['index_404']))    { $index = false; }
+            if (is_author()  && empty($archives['index_author'])) { $index = false; }
+            if ((is_date() || is_year() || is_month() || is_day()) && empty($archives['index_date'])) { $index = false; }
+            if (is_attachment() && empty($archives['index_attachment'])) { $index = false; }
+            $robots_line = $index ? 'index,follow' : 'noindex,follow';
+        }
+        if ($robots_line) {
+            $robots_line = apply_filters('savejson_robots', $robots_line);
+            echo '<meta name="robots" content="' . esc_attr($robots_line) . "\" />\n";
+            echo '<meta name="googlebot" content="' . esc_attr($robots_line) . "\" />\n";
         }
         if ($desc) {
             echo '<meta name="description" content="' . esc_attr($desc) . "\" />\n";
         }
+        // Locale
+        $locale = str_replace('-', '_', get_locale());
+        echo '<meta property="og:locale" content="' . esc_attr($locale) . "\" />\n";
         echo '<meta property="og:title" content="' . esc_attr($soc_title ?: $title) . "\" />\n";
         echo '<meta property="og:description" content="' . esc_attr($soc_desc ?: $desc) . "\" />\n";
         echo '<meta property="og:url" content="' . esc_url($url) . "\" />\n";
         echo '<meta property="og:site_name" content="' . esc_attr($site) . "\" />\n";
         echo '<meta property="og:type" content="' . esc_attr($type) . "\" />\n";
+        // Social image details
+        $img_w = $img_h = 0; $img_alt = '';
         if ($soc_image !== '') {
             echo '<meta property="og:image" content="' . esc_url($soc_image) . "\" />\n";
+            if ($post_id) {
+                $thumb_id = get_post_thumbnail_id($post_id);
+                if ($thumb_id) {
+                    $src = wp_get_attachment_image_src($thumb_id, 'full');
+                    if (is_array($src)) { $img_w = (int)$src[1]; $img_h = (int)$src[2]; }
+                    $meta = get_post_meta($thumb_id, '_wp_attachment_image_alt', true);
+                    if ($meta) { $img_alt = (string) $meta; }
+                }
+            }
+            if ($img_w && $img_h) {
+                echo '<meta property="og:image:width" content="' . esc_attr((string)$img_w) . "\" />\n";
+                echo '<meta property="og:image:height" content="' . esc_attr((string)$img_h) . "\" />\n";
+            }
+            if ($img_alt !== '') {
+                echo '<meta name="twitter:image:alt" content="' . esc_attr($img_alt) . "\" />\n";
+            }
         }
         echo '<meta name="twitter:card" content="' . esc_attr($tw_card) . "\" />\n";
         echo '<meta name="twitter:title" content="' . esc_attr($soc_title ?: $title) . "\" />\n";
@@ -772,6 +816,41 @@ class Plugin {
         if ($soc_image !== '') { echo '<meta name="twitter:image" content="' . esc_url($soc_image) . "\" />\n"; }
         if ($tw_site !== '') { echo '<meta name="twitter:site" content="' . esc_attr($tw_site) . "\" />\n"; }
         if ($tw_creator !== '') { echo '<meta name="twitter:creator" content="' . esc_attr($tw_creator) . "\" />\n"; }
+
+        // Article-specific meta
+        if ($post_id && is_singular('post')) {
+            echo '<meta property="article:published_time" content="' . esc_attr(get_post_time('c', true, $post_id)) . "\" />\n";
+            echo '<meta property="article:modified_time" content="' . esc_attr(get_post_modified_time('c', true, $post_id)) . "\" />\n";
+            echo '<meta property="og:updated_time" content="' . esc_attr(get_post_modified_time('c', true, $post_id)) . "\" />\n";
+            $cats = get_the_category($post_id);
+            if ($cats && !is_wp_error($cats) && isset($cats[0])) {
+                echo '<meta property="article:section" content="' . esc_attr($cats[0]->name) . "\" />\n";
+            }
+            $tags = get_the_tags($post_id);
+            if ($tags) {
+                foreach ($tags as $tg) {
+                    echo '<meta property="article:tag" content="' . esc_attr($tg->name) . "\" />\n";
+                }
+            }
+        }
+
+        // Pagination prev/next
+        if ($paged > 1) {
+            $prev_link = get_pagenum_link($paged - 1);
+            echo '<link rel="prev" href="' . esc_url($prev_link) . "\" />\n";
+        }
+        // If we can detect more than current, add next (best-effort)
+        global $wp_query, $numpages;
+        $has_next = false;
+        if (!is_singular()) {
+            if ($wp_query && $wp_query->max_num_pages && $paged < $wp_query->max_num_pages) { $has_next = true; }
+        } else {
+            if (is_numeric($numpages) && $numpages && $paged < $numpages) { $has_next = true; }
+        }
+        if ($has_next) {
+            $next_link = get_pagenum_link($paged + 1);
+            echo '<link rel="next" href="' . esc_url($next_link) . "\" />\n";
+        }
 
         // JSON-LD graph
         $graph = [];
@@ -788,6 +867,7 @@ class Plugin {
             'name'     => (string) ($opts['site']['name'] ?? get_bloginfo('name')),
         ];
         if ($logo) { $org_node['logo'] = ['@type' => 'ImageObject','url' => $logo]; }
+        $org_node['url'] = home_url('/');
         if (!empty($sameAs)) { $org_node['sameAs'] = $sameAs; }
         $graph[] = $org_node;
 
@@ -823,10 +903,14 @@ class Plugin {
                     'name'  => wp_strip_all_tags(get_the_author_meta('display_name', get_post_field('post_author', $post_id))),
                 ],
                 'publisher'     => ['@id' => $org_id],
+                'isPartOf'      => ['@id' => $website_id],
+                'inLanguage'    => get_bloginfo('language'),
             ];
             if ($post_image !== '') {
-                $node['image'] = $post_image;
-                $node['primaryImageOfPage'] = $post_image;
+                $imageNode = [ '@type' => 'ImageObject', 'url' => $post_image ];
+                if (!empty($img_w) && !empty($img_h)) { $imageNode['width'] = $img_w; $imageNode['height'] = $img_h; }
+                $node['image'] = $imageNode;
+                $node['primaryImageOfPage'] = $imageNode;
             }
             $graph[] = $node;
         }
