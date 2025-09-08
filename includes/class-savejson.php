@@ -687,7 +687,6 @@ class Plugin {
         $opts = $this->get_options();
         if ($soc_title === '') $soc_title = $title;
         if ($soc_desc  === '') $soc_desc  = $desc;
-        if ($soc_image === '') $soc_image = (string) ($opts['social']['default_image'] ?? '');
 
         $tw_card  = $post_id ? (string) get_post_meta($post_id, self::META_TW_CARD, true) : '';
         if ($tw_card === '') $tw_card = (string) ($opts['social']['twitter']['card'] ?? 'summary_large_image');
@@ -738,6 +737,14 @@ class Plugin {
         $tw_creator = (string) ($ctx['tw_creator'] ?? $tw_creator);
         $canonical  = (string) ($ctx['canonical'] ?? $canonical);
         $post_image = (string) ($ctx['post_image'] ?? $post_image);
+
+        // Prefer featured image for social if none explicitly set; then fall back to global default
+        if ($soc_image === '' && $post_image !== '') {
+            $soc_image = $post_image;
+        }
+        if ($soc_image === '') {
+            $soc_image = (string) ($opts['social']['default_image'] ?? '');
+        }
 
         // Basic & OG
         echo '<link rel="canonical" href="' . esc_url($canonical) . "\" />\n";
