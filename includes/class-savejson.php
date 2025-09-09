@@ -24,6 +24,8 @@ class Plugin {
     const META_ROBOTS_FOLLOW  = '_save_robots_follow';   // '1' (default) or '0'
     const META_ROBOTS_ADV     = '_save_robots_advanced'; // csv string e.g. "nosnippet,noarchive"
     const META_BREADCRUMB_T   = '_save_breadcrumb_title';
+    const META_ANSWER         = '_save_main_answer';
+    const META_HOWTO          = '_save_howto';
 
     public function __construct() {
         // Admin UI for per-post meta
@@ -85,6 +87,14 @@ class Plugin {
                 'savejson_scripts',
                 __('SAVE JSON — Scripts (Head & Footer)', 'save-json-content'),
                 [$this, 'render_scripts_metabox'],
+                $type,
+                'normal',
+                'default'
+            );
+            add_meta_box(
+                'savejson_answers',
+                __('SAVE JSON — Answers & HowTo', 'save-json-content'),
+                [$this, 'render_answers_metabox'],
                 $type,
                 'normal',
                 'default'
@@ -294,6 +304,44 @@ class Plugin {
         <?php
     }
 
+    public function render_answers_metabox(\WP_Post $post) {
+        $answer = get_post_meta($post->ID, self::META_ANSWER, true);
+        $howto  = get_post_meta($post->ID, self::META_HOWTO, true);
+        if (!is_array($howto)) { $howto = []; }
+        ?>
+        <p><strong><?php echo esc_html__('Main Answer (40–60 words recommended)', 'save-json-content'); ?></strong><br/>
+        <textarea name="savejson_main_answer" rows="3" style="width:100%;" placeholder="<?php echo esc_attr__('Short, direct answer to the primary question.', 'save-json-content'); ?>"><?php echo esc_textarea((string)$answer); ?></textarea></p>
+
+        <hr/>
+        <p><strong><?php echo esc_html__('HowTo Steps', 'save-json-content'); ?></strong></p>
+        <div id="savejson_howto_wrap">
+            <?php foreach ($howto as $i => $row): $n = (int)$i; $name = isset($row['name']) ? $row['name'] : ''; $text = isset($row['text']) ? $row['text'] : ''; ?>
+            <div class="savejson-howto-step" style="border:1px solid #ddd; padding:10px; margin-bottom:8px; background:#fafafa;">
+                <input type="text" name="savejson_howto[<?php echo esc_attr($n); ?>][name]" value="<?php echo esc_attr($name); ?>" placeholder="<?php echo esc_attr__('Step name', 'save-json-content'); ?>" style="width:100%; margin-bottom:6px;" />
+                <textarea name="savejson_howto[<?php echo esc_attr($n); ?>][text]" rows="2" style="width:100%;" placeholder="<?php echo esc_attr__('Step instructions', 'save-json-content'); ?>"><?php echo esc_textarea($text); ?></textarea>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <p><button type="button" class="button" id="savejson_add_howto"><?php echo esc_html__('Add Step', 'save-json-content'); ?></button></p>
+        <p class="description"><?php echo esc_html__('Emits HowTo JSON-LD when steps are present. Keep steps concise.', 'save-json-content'); ?></p>
+        <script>
+        (function(){
+            var wrap = document.getElementById('savejson_howto_wrap');
+            var btn  = document.getElementById('savejson_add_howto');
+            var idx  = wrap ? wrap.children.length : 0;
+            if (!wrap || !btn) return;
+            btn.addEventListener('click', function(){
+                var div = document.createElement('div'); div.className = 'savejson-howto-step'; div.style.cssText = 'border:1px solid #ddd;padding:10px;margin-bottom:8px;background:#fafafa;';
+                div.innerHTML = '<input type="text" name="savejson_howto['+idx+'][name]" placeholder="<?php echo esc_js(__('Step name', 'save-json-content')); ?>" style="width:100%;margin-bottom:6px;" />'
+                              + '<textarea name="savejson_howto['+idx+'][text]" rows="2" style="width:100%;" placeholder="<?php echo esc_js(__('Step instructions', 'save-json-content')); ?>"></textarea>';
+                wrap.appendChild(div);
+                idx++;
+            });
+        })();
+        </script>
+        <?php
+    }
+
     /* ===========================
      * Editor (Gutenberg) sidebar
      * =========================== */
@@ -399,6 +447,13 @@ class Plugin {
                 'sanitize_callback' => 'sanitize_text_field',
                 'auth_callback' => function() { return current_user_can('edit_posts'); },
             ]);
+            register_post_meta($type, self::META_ANSWER, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_textarea_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
         }
     }
 
@@ -455,6 +510,20 @@ class Plugin {
         } else {
             delete_post_meta($post_id, self::META_FAQ);
         }
+
+        // Main Answer
+        $answer = isset($_POST['savejson_main_answer']) ? sanitize_textarea_field($_POST['savejson_main_answer']) : '';
+        if ($answer !== '') { update_post_meta($post_id, self::META_ANSWER, $answer); } else { delete_post_meta($post_id, self::META_ANSWER); }
+
+        // HowTo steps
+        $howto = isset($_POST['savejson_howto']) && is_array($_POST['savejson_howto']) ? $_POST['savejson_howto'] : [];
+        $steps = [];
+        foreach ($howto as $row) {
+            $n = isset($row['name']) ? sanitize_text_field($row['name']) : '';
+            $t = isset($row['text']) ? sanitize_textarea_field($row['text']) : '';
+            if ($n !== '' || $t !== '') { $steps[] = ['name' => $n, 'text' => $t]; }
+        }
+        if (!empty($steps)) { update_post_meta($post_id, self::META_HOWTO, $steps); } else { delete_post_meta($post_id, self::META_HOWTO); }
 
         // Head/Footer custom code (requires unfiltered_html)
         if (current_user_can('unfiltered_html')) {
@@ -792,6 +861,19 @@ class Plugin {
         // Locale
         $locale = str_replace('-', '_', get_locale());
         echo '<meta property="og:locale" content="' . esc_attr($locale) . "\" />\n";
+        // hreflang / alternates
+        $alts = $this->get_alternates($post_id);
+        $og_alt_locales = [];
+        foreach ($alts as $alt) {
+            if (!empty($alt['hreflang']) && !empty($alt['url'])) {
+                echo '<link rel="alternate" href="' . esc_url($alt['url']) . '" hreflang="' . esc_attr($alt['hreflang']) . "\" />\n";
+                if (!empty($alt['locale'])) { $og_alt_locales[] = str_replace('-', '_', $alt['locale']); }
+            }
+        }
+        foreach (array_unique($og_alt_locales) as $altLocale) {
+            echo '<meta property="og:locale:alternate" content="' . esc_attr($altLocale) . "\" />\n";
+        }
+
         echo '<meta property="og:title" content="' . esc_attr($soc_title ?: $title) . "\" />\n";
         echo '<meta property="og:description" content="' . esc_attr($soc_desc ?: $desc) . "\" />\n";
         echo '<meta property="og:url" content="' . esc_url($url) . "\" />\n";
@@ -901,6 +983,8 @@ class Plugin {
                 'isPartOf'      => ['@id' => $website_id],
                 'inLanguage'    => get_bloginfo('language'),
             ];
+            $ans = get_post_meta($post_id, self::META_ANSWER, true);
+            if ($ans) { $node['abstract'] = $ans; }
             // Author entity with @id
             $author_id = (int) get_post_field('post_author', $post_id);
             if ($author_id) {
@@ -1013,6 +1097,30 @@ class Plugin {
             }
         }
 
+        // HowTo JSON-LD
+        if ($post_id) {
+            $howto = get_post_meta($post_id, self::META_HOWTO, true);
+            if (is_array($howto) && !empty($howto)) {
+                $steps = [];
+                $pos = 1;
+                foreach ($howto as $row) {
+                    $name = isset($row['name']) ? wp_strip_all_tags($row['name']) : '';
+                    $text = isset($row['text']) ? wp_strip_all_tags($row['text']) : '';
+                    if ($name === '' && $text === '') continue;
+                    $steps[] = [ '@type' => 'HowToStep', 'position' => $pos, 'name' => ($name ?: sprintf(__('Step %d', 'save-json-content'), $pos)), 'text' => $text ];
+                    $pos++;
+                }
+                if (!empty($steps)) {
+                    $graph[] = [
+                        '@context' => 'https://schema.org',
+                        '@type'    => 'HowTo',
+                        'name'     => wp_strip_all_tags(get_the_title($post_id)),
+                        'step'     => $steps,
+                    ];
+                }
+            }
+        }
+
         // Extensibility: filter the final graph
         $graph = apply_filters('savejson_graph', $graph, $post_id);
         echo "<script type=\"application/ld+json\">" . wp_json_encode(count($graph) === 1 ? $graph[0] : ['@graph' => $graph], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) . "</script>\n";
@@ -1037,6 +1145,50 @@ class Plugin {
             wp_safe_redirect($target, 301);
             exit;
         }
+    }
+
+    private function get_alternates(int $post_id) : array {
+        $alts = apply_filters('savejson_alternates', null, $post_id);
+        if (is_array($alts)) { return $alts; }
+
+        $out = [];
+        // Polylang
+        if (function_exists('pll_the_languages')) {
+            $args = ['raw' => 1, 'hide_if_no_translation' => 0];
+            if ($post_id) { $args['post_id'] = $post_id; }
+            $langs = function_exists('pll_the_languages') ? pll_the_languages($args) : [];
+            if (is_array($langs)) {
+                foreach ($langs as $info) {
+                    if (!empty($info['url'])) {
+                        $hreflang = !empty($info['slug']) ? $info['slug'] : (!empty($info['locale']) ? $info['locale'] : '');
+                        $out[] = [ 'hreflang' => $hreflang, 'url' => $info['url'], 'locale' => $info['locale'] ?? '' ];
+                    }
+                }
+            }
+        }
+        // WPML
+        if (empty($out) && function_exists('icl_object_id')) {
+            $langs = apply_filters('wpml_active_languages', null, 'skip_missing=0');
+            if (is_array($langs)) {
+                foreach ($langs as $code => $lang) {
+                    $url = '';
+                    if ($post_id) {
+                        $alt_id = apply_filters('wpml_object_id', $post_id, get_post_type($post_id), false, $code);
+                        if ($alt_id) { $url = get_permalink($alt_id); }
+                    } else {
+                        $url = $lang['url'] ?? '';
+                    }
+                    if ($url) {
+                        $out[] = [ 'hreflang' => $code, 'url' => $url, 'locale' => $lang['default_locale'] ?? '' ];
+                    }
+                }
+            }
+        }
+        // x-default for home
+        if (empty($post_id)) {
+            $out[] = [ 'hreflang' => 'x-default', 'url' => home_url('/') ];
+        }
+        return $out;
     }
 
     public function emit_custom_head_code() {

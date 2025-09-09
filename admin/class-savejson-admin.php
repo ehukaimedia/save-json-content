@@ -350,12 +350,24 @@ class Admin {
         $s = $o['social'] ?? [];
         $def_img = $s['default_image'] ?? '';
         $tw = $s['twitter'] ?? [];
+        if (function_exists('wp_enqueue_media')) { wp_enqueue_media(); }
         echo '<div class="wrap"><h1>'.esc_html__('Social & Sharing','save-json-content').'</h1>';
         echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">';
         wp_nonce_field('savejson_save_settings','savejson_nonce');
         echo '<input type="hidden" name="action" value="savejson_save_settings" />';
         echo '<input type="hidden" name="redirect_to" value="savejson-social" />';
-        $this->field('social[default_image]', $def_img, __('Default Sharing Image URL','save-json-content'),'url');
+        echo '<p><strong>'.esc_html__('Default Social Image','save-json-content').'</strong><br/>';
+        printf('<input type="url" id="savejson_default_social" name="savejson_options[social][default_image]" value="%s" placeholder="https://example.com/image.jpg" style="width:100%%; max-width:520px;"/>', esc_attr($def_img));
+        echo '<br/>';
+        echo '<button type="button" class="button" id="savejson_default_social_btn">'.esc_html__('Select from Media Library','save-json-content').'</button> ';
+        echo '<button type="button" class="button" id="savejson_default_social_clear">'.esc_html__('Clear','save-json-content').'</button>';
+        echo '<div id="savejson_default_social_preview" style="margin-top:8px;">';
+        if (!empty($def_img)) {
+            echo '<img src="'.esc_url($def_img).'" alt="" style="max-width:220px;height:auto;border:1px solid #ddd;" />';
+        }
+        echo '</div>';
+        echo '<p class="description">'.esc_html__('Recommended: 1200×630+; used when no per‑post or featured image is available.','save-json-content').'</p>';
+        echo '</p>';
         echo '<h2>'.esc_html__('Twitter','save-json-content').'</h2>';
         echo '<p><label><strong>'.esc_html__('Card type','save-json-content').'</strong><br/>';
         echo '<select name="savejson_options[social][twitter][card]">';
@@ -366,7 +378,41 @@ class Admin {
         $this->field('social[twitter][site]', $tw['site'] ?? '', __('Site handle (e.g., @site)','save-json-content'));
         $this->field('social[twitter][creator]', $tw['creator'] ?? '', __('Creator handle (e.g., @you)','save-json-content'));
         submit_button(__('Save Changes','save-json-content'));
-        echo '</form></div>';
+        echo '</form>';
+        ?>
+        <script>
+        (function(){
+            var input = document.getElementById('savejson_default_social');
+            var btn   = document.getElementById('savejson_default_social_btn');
+            var clear = document.getElementById('savejson_default_social_clear');
+            var preview = document.getElementById('savejson_default_social_preview');
+            var frame;
+            function updatePreview(url){
+                if (!preview) return;
+                preview.innerHTML = url ? '<img src="'+url.replace(/"/g,'&quot;')+'" style="max-width:220px;height:auto;border:1px solid #ddd;" />' : '';
+            }
+            if (btn) {
+                btn.addEventListener('click', function(e){
+                    e.preventDefault();
+                    if (typeof wp === 'undefined' || !wp.media) { alert('<?php echo esc_js(__('Media library is not available.', 'save-json-content')); ?>'); return; }
+                    if (frame) { frame.open(); return; }
+                    frame = wp.media({ title: '<?php echo esc_js(__('Select Default Social Image', 'save-json-content')); ?>', library: { type: 'image' }, button: { text: '<?php echo esc_js(__('Use image', 'save-json-content')); ?>' }, multiple: false });
+                    frame.on('select', function(){
+                        var att = frame.state().get('selection').first().toJSON();
+                        var url = (att.sizes && att.sizes.large && att.sizes.large.url) || (att.sizes && att.sizes.full && att.sizes.full.url) || att.url;
+                        if (input) { input.value = url || ''; }
+                        updatePreview(url || '');
+                    });
+                    frame.open();
+                });
+            }
+            if (clear) {
+                clear.addEventListener('click', function(e){ e.preventDefault(); if (input) { input.value=''; } updatePreview(''); });
+            }
+        })();
+        </script>
+        <?php
+        echo '</div>';
     }
 
     public function screen_sitemaps() {
