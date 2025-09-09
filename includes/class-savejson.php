@@ -54,6 +54,9 @@ class Plugin {
         // RSS content before/after
         add_filter('the_content_feed', [$this, 'rss_inject'], 10, 1);
         add_filter('the_excerpt_rss', [$this, 'rss_inject'], 10, 1);
+
+        // Redirect thin attachment pages if enabled
+        add_action('template_redirect', [$this, 'maybe_redirect_attachment']);
     }
 
     /* ===========================
@@ -707,12 +710,17 @@ class Plugin {
             $canonical = $paged > 1 ? get_pagenum_link($paged) : $url;
         }
 
-        // Featured image
+        // Featured image (and possible dimensions / alt)
         $post_image = '';
+        $img_w = 0; $img_h = 0; $img_alt = '';
         if ($post_id) {
             $thumb_id = get_post_thumbnail_id($post_id);
             if ($thumb_id) {
                 $post_image = (string) wp_get_attachment_image_url($thumb_id, 'full');
+                $src = wp_get_attachment_image_src($thumb_id, 'full');
+                if (is_array($src)) { $img_w = (int)$src[1]; $img_h = (int)$src[2]; }
+                $meta_alt = get_post_meta($thumb_id, '_wp_attachment_image_alt', true);
+                if ($meta_alt) { $img_alt = (string) $meta_alt; }
             }
         }
 
@@ -790,18 +798,8 @@ class Plugin {
         echo '<meta property="og:site_name" content="' . esc_attr($site) . "\" />\n";
         echo '<meta property="og:type" content="' . esc_attr($type) . "\" />\n";
         // Social image details
-        $img_w = $img_h = 0; $img_alt = '';
         if ($soc_image !== '') {
             echo '<meta property="og:image" content="' . esc_url($soc_image) . "\" />\n";
-            if ($post_id) {
-                $thumb_id = get_post_thumbnail_id($post_id);
-                if ($thumb_id) {
-                    $src = wp_get_attachment_image_src($thumb_id, 'full');
-                    if (is_array($src)) { $img_w = (int)$src[1]; $img_h = (int)$src[2]; }
-                    $meta = get_post_meta($thumb_id, '_wp_attachment_image_alt', true);
-                    if ($meta) { $img_alt = (string) $meta; }
-                }
-            }
             if ($img_w && $img_h) {
                 echo '<meta property="og:image:width" content="' . esc_attr((string)$img_w) . "\" />\n";
                 echo '<meta property="og:image:height" content="' . esc_attr((string)$img_h) . "\" />\n";
@@ -898,14 +896,30 @@ class Plugin {
                 'description'   => $desc,
                 'datePublished' => get_post_time('c', true, $post_id),
                 'dateModified'  => get_post_modified_time('c', true, $post_id),
-                'author'        => [
-                    '@type' => 'Person',
-                    'name'  => wp_strip_all_tags(get_the_author_meta('display_name', get_post_field('post_author', $post_id))),
-                ],
+                'author'        => [],
                 'publisher'     => ['@id' => $org_id],
                 'isPartOf'      => ['@id' => $website_id],
                 'inLanguage'    => get_bloginfo('language'),
             ];
+            // Author entity with @id
+            $author_id = (int) get_post_field('post_author', $post_id);
+            if ($author_id) {
+                $author_node_id = home_url('#/person/author-' . $author_id);
+                $author_node = [
+                    '@context' => 'https://schema.org',
+                    '@type'    => 'Person',
+                    '@id'      => $author_node_id,
+                    'name'     => wp_strip_all_tags(get_the_author_meta('display_name', $author_id)),
+                    'url'      => get_author_posts_url($author_id),
+                ];
+                $avatar = get_avatar_url($author_id, ['size' => 256]);
+                if ($avatar) { $author_node['image'] = [ '@type' => 'ImageObject', 'url' => $avatar ]; }
+                $bio = get_the_author_meta('description', $author_id);
+                if ($bio) { $author_node['description'] = wp_strip_all_tags($bio); }
+                $author_node = apply_filters('savejson_author_node', $author_node, $author_id);
+                $graph[] = $author_node;
+                $node['author'] = [ '@id' => $author_node_id ];
+            }
             if ($post_image !== '') {
                 $imageNode = [ '@type' => 'ImageObject', 'url' => $post_image ];
                 if (!empty($img_w) && !empty($img_h)) { $imageNode['width'] = $img_w; $imageNode['height'] = $img_h; }
@@ -913,6 +927,61 @@ class Plugin {
                 $node['primaryImageOfPage'] = $imageNode;
             }
             $graph[] = $node;
+        }
+
+        // Taxonomy/archive schema (CollectionPage) and SearchResultsPage
+        if (!$post_id) {
+            if (is_search()) {
+                $graph[] = [
+                    '@context'   => 'https://schema.org',
+                    '@type'      => 'SearchResultsPage',
+                    '@id'        => home_url(add_query_arg([])) . '#search',
+                    'url'        => home_url(add_query_arg([])),
+                    'isPartOf'   => [ '@id' => $website_id ],
+                    'inLanguage' => get_bloginfo('language'),
+                    'name'       => sprintf(__('Search results for "%s"', 'save-json-content'), get_search_query()),
+                ];
+            } elseif (is_category() || is_tag() || is_tax()) {
+                $term = get_queried_object();
+                if ($term && isset($term->term_id)) {
+                    $link = get_term_link($term);
+                    if (!is_wp_error($link)) {
+                        $collection = [
+                            '@context'   => 'https://schema.org',
+                            '@type'      => 'CollectionPage',
+                            '@id'        => trailingslashit($link) . '#collection',
+                            'url'        => $link,
+                            'isPartOf'   => [ '@id' => $website_id ],
+                            'inLanguage' => get_bloginfo('language'),
+                            'name'       => $term->name,
+                        ];
+                        $tdesc = term_description($term);
+                        if ($tdesc) { $collection['description'] = wp_strip_all_tags($tdesc); }
+                        // Optional ItemList of current page posts
+                        $include = apply_filters('savejson_collectionpage_include_items', true, $term);
+                        if ($include) {
+                            global $wp_query;
+                            if ($wp_query && !empty($wp_query->posts)) {
+                                $items = [];
+                                $pos = 1;
+                                foreach ($wp_query->posts as $p) {
+                                    $items[] = [
+                                        '@type'    => 'ListItem',
+                                        'position' => $pos++,
+                                        'url'      => get_permalink($p),
+                                        'name'     => wp_strip_all_tags(get_the_title($p)),
+                                    ];
+                                }
+                                $collection['hasPart'] = [
+                                    '@type' => 'ItemList',
+                                    'itemListElement' => $items,
+                                ];
+                            }
+                        }
+                        $graph[] = $collection;
+                    }
+                }
+            }
         }
 
         // FAQ JSON-LD
@@ -947,6 +1016,27 @@ class Plugin {
         // Extensibility: filter the final graph
         $graph = apply_filters('savejson_graph', $graph, $post_id);
         echo "<script type=\"application/ld+json\">" . wp_json_encode(count($graph) === 1 ? $graph[0] : ['@graph' => $graph], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) . "</script>\n";
+    }
+
+    public function maybe_redirect_attachment() : void {
+        if (!is_attachment()) { return; }
+        $opts = $this->get_options();
+        $ar = isset($opts['archives']) && is_array($opts['archives']) ? $opts['archives'] : [];
+        if (empty($ar['redirect_attachment'])) { return; }
+        $id = get_queried_object_id();
+        if (!$id) { return; }
+        $parent = (int) get_post_field('post_parent', $id);
+        $target = '';
+        if ($parent) {
+            $target = get_permalink($parent);
+        }
+        if (!$target) {
+            $target = wp_get_attachment_url($id);
+        }
+        if ($target) {
+            wp_safe_redirect($target, 301);
+            exit;
+        }
     }
 
     public function emit_custom_head_code() {

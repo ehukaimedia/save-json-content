@@ -137,6 +137,7 @@ class Admin {
                 'index_author'     => !empty($ar['index_author']) ? 1 : 0,
                 'index_date'       => !empty($ar['index_date']) ? 1 : 0,
                 'index_attachment' => !empty($ar['index_attachment']) ? 1 : 0,
+                'redirect_attachment' => !empty($ar['redirect_attachment']) ? 1 : 0,
             ];
         }
 
@@ -255,6 +256,8 @@ class Admin {
             printf('<p><label><input type="checkbox" name="savejson_options[archives][%s]" value="1" %s> %s</label></p>',
                 esc_attr($k), checked($val,true,false), esc_html($label));
         }
+        $redir = !empty($ar['redirect_attachment']);
+        echo '<p><label><input type="checkbox" name="savejson_options[archives][redirect_attachment]" value="1" '.checked($redir,true,false).'/> ' . esc_html__('Redirect attachment pages to parent post or file URL (recommended)','save-json-content') . '</label></p>';
         submit_button(__('Save Changes','save-json-content'));
         echo '</form></div>';
     }

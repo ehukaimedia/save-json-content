@@ -107,6 +107,7 @@ register_activation_hook(__FILE__, function(){
             'index_author'    => true,
             'index_date'      => false,
             'index_attachment'=> false,
+            'redirect_attachment' => true,
         ],
         'sitemaps' => [
             'enabled' => true, // rely on WP core, but expose UI toggles
