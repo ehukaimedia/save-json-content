@@ -32,10 +32,11 @@ $meta_keys = [
     '_save_breadcrumb_title',
     '_save_primary_category',
     '_save_migrated_yoast',
+    '_save_main_answer',
+    '_save_howto',
 ];
 
 if (!empty($meta_keys)) {
     $placeholders = implode(',', array_fill(0, count($meta_keys), '%s'));
     $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->postmeta} WHERE meta_key IN ($placeholders)", ...$meta_keys));
 }
-
