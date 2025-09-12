@@ -197,7 +197,7 @@ Test in the Action “Test” tab
   "status": "draft",
   "slug": "reset-router",
   "title": "How to Reset a Router",
-  "content": "<p>Short intro…</p><ul><li>Step 1</li><li>Step 2</li></ul><h2 id=\"power-cycle\">Power cycle</h2><p>…</p>",
+  "content_html": "<p>Short intro…</p><ul><li>Step 1</li><li>Step 2</li></ul><h2 id=\"power-cycle\">Power cycle</h2><p>…</p>",
   "meta": {
     "_save_meta_title": "Reset a Router (Step‑by‑Step)",
     "_save_meta_desc": "Quick guide…",

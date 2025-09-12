@@ -97,6 +97,8 @@ class Rest {
         $slug_new = sanitize_title($req->get_param('slug_new') ?: '');
         $title = (string) ($req->get_param('title') ?: '');
         $content = (string) ($req->get_param('content') ?: '');
+        $content_html = (string) ($req->get_param('content_html') ?: '');
+        if ($content === '' && $content_html !== '') { $content = $content_html; }
         $excerpt = (string) ($req->get_param('excerpt') ?: '');
         $meta    = (array) ($req->get_param('meta') ?: []);
         $cats    = $req->get_param('categories');
@@ -316,6 +318,7 @@ class Rest {
                                             'slug_new' => [ 'type' => 'string' ],
                                             'title' => [ 'type' => 'string' ],
                                             'content' => [ 'type' => 'string' ],
+                                            'content_html' => [ 'type' => 'string', 'description' => 'Alias of content; HTML body' ],
                                             'excerpt' => [ 'type' => 'string' ],
                                             'categories' => [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'IDs or slugs' ],
                                             'tags' => [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'IDs or slugs' ],
