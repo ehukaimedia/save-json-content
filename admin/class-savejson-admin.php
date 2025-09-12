@@ -26,6 +26,9 @@ class Admin {
         // Header/Footer GPT migration actions
         add_action('admin_post_savejson_migrate_hfg',        [$this, 'handle_migrate_hfg']);
         add_action('admin_post_savejson_migrate_hfg_dryrun', [$this, 'handle_migrate_hfg_dryrun']);
+
+        // API token management
+        add_action('admin_post_savejson_api_token_reset', [$this, 'handle_api_token_reset']);
     }
 
     public function menu() {
@@ -199,6 +202,25 @@ class Admin {
         echo '<div class="card"><h2>'.esc_html__('Sitemaps','save-json-content').'</h2>';
         echo '<p>'.esc_html__('Manage which types are listed in XML sitemaps.','save-json-content').'</p>';
         echo '<p><a class="button" href="'.esc_url(admin_url('admin.php?page=savejson-sitemaps')).'">'.esc_html__('Sitemaps Settings','save-json-content').'</a></p></div>';
+
+        echo '<div class="card"><h2>'.esc_html__('Custom GPT Actions','save-json-content').'</h2>';
+        echo '<p>'.esc_html__('Connect your GPT to WordPress using a simple bearer token — no app passwords required.', 'save-json-content').'</p>';
+        $spec_url = rest_url('savejson/v1/openapi');
+        $o = $this->get_opts();
+        $api = isset($o['api']) && is_array($o['api']) ? $o['api'] : [];
+        $token = isset($api['token']) ? (string) $api['token'] : '';
+        if ($token === '') { $token = wp_generate_password(48, false); $o['api']['token'] = $token; update_option('savejson_options', $o); }
+        echo '<p><strong>'.esc_html__('Schema URL','save-json-content').':</strong><br/><code>'.esc_html($spec_url).'</code></p>';
+        echo '<p><strong>'.esc_html__('API Token','save-json-content').':</strong><br/>';
+        echo '<input type="text" readonly value="'.esc_attr($token).'" style="width:100%;max-width:520px;" onclick="this.select()" />';
+        echo '</p>';
+        echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" style="display:inline-block;margin-right:8px;">';
+        wp_nonce_field('savejson_api_token_reset','savejson_nonce');
+        echo '<input type="hidden" name="action" value="savejson_api_token_reset" />';
+        submit_button(__('Regenerate Token','save-json-content'),'secondary', '', false);
+        echo '</form>';
+        echo '<p class="description">'.esc_html__('In the Custom GPT Actions auth dialog, choose “API Key → Bearer” and paste this token as the key. Then import the schema URL above.', 'save-json-content').'</p>';
+        echo '</div>';
 
         echo '<div class="card"><h2>'.esc_html__('Tools','save-json-content').'</h2>';
         echo '<p>'.esc_html__('Bulk editor, file editor, and RSS content.','save-json-content').'</p>';
@@ -1015,6 +1037,20 @@ class Admin {
         } while ($q->max_num_pages >= $paged && $paged < 1000);
 
         wp_safe_redirect(admin_url('admin.php?page=savejson-migrate-hfg&updated=1&moved_head='.$moved_head.'&moved_foot='.$moved_foot));
+        exit;
+    }
+
+    /* ===========================
+     * API token management
+     * =========================== */
+    public function handle_api_token_reset() {
+        if (!current_user_can('manage_options')) wp_die('Forbidden');
+        if (!isset($_POST['savejson_nonce']) || !wp_verify_nonce($_POST['savejson_nonce'], 'savejson_api_token_reset')) wp_die('Bad nonce');
+        $o = $this->get_opts();
+        $o['api'] = isset($o['api']) && is_array($o['api']) ? $o['api'] : [];
+        $o['api']['token'] = wp_generate_password(48, false);
+        update_option('savejson_options', $o);
+        wp_safe_redirect(admin_url('admin.php?page=savejson&updated=1'));
         exit;
     }
 }

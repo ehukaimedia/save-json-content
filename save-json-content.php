@@ -34,6 +34,10 @@ require_once SAVEJSON_PLUGIN_DIR . 'includes/migration.php';
 if (file_exists(SAVEJSON_PLUGIN_DIR . 'includes/breadcrumbs.php')) {
     require_once SAVEJSON_PLUGIN_DIR . 'includes/breadcrumbs.php';
 }
+// REST API endpoints
+if (file_exists(SAVEJSON_PLUGIN_DIR . 'includes/rest.php')) {
+    require_once SAVEJSON_PLUGIN_DIR . 'includes/rest.php';
+}
 
 // WP-CLI
 if (defined('WP_CLI') && WP_CLI && file_exists(SAVEJSON_PLUGIN_DIR . 'includes/cli.php')) {
@@ -50,6 +54,8 @@ add_action('plugins_loaded', function(){
     if (is_admin()) {
         $GLOBALS['savejson_admin'] = new \SaveJSON\Admin();
     }
+    // Register REST routes
+    if (class_exists('SaveJSON\\Rest')) { \SaveJSON\Rest::init(); }
 });
 
 // Quick link to settings page in Plugins list
@@ -125,6 +131,11 @@ register_activation_hook(__FILE__, function(){
         'rss' => [
             'before' => '',
             'after'  => "\nThe post %%title%% appeared first on %%sitename%%.",
+        ],
+        'api' => [
+            'token' => wp_generate_password(48, false),
+            'user'  => 0,
+            'allow_publish' => false,
         ],
         'flags' => [
             'migration_yoast_done' => false,

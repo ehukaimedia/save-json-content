@@ -26,6 +26,42 @@ class Plugin {
     const META_BREADCRUMB_T   = '_save_breadcrumb_title';
     const META_ANSWER         = '_save_main_answer';
     const META_HOWTO          = '_save_howto';
+    // Social sharing composer
+    const META_SHARE_TW_TEXT  = '_save_share_twitter_text';
+    const META_SHARE_TW_TAGS  = '_save_share_twitter_tags'; // csv list without '#'
+    const META_SHARE_FB_TEXT  = '_save_share_facebook_text';
+    const META_SHARE_LI_TEXT  = '_save_share_linkedin_text';
+
+    // Sanitizers for complex REST meta
+    public static function sanitize_faq_value($value = [], $meta_key = '', $object_type = '') {
+        $out = [];
+        if (is_array($value)) {
+            foreach ($value as $row) {
+                if (!is_array($row)) { continue; }
+                $q = isset($row['question']) ? sanitize_text_field((string) $row['question']) : '';
+                $a = isset($row['answer']) ? wp_kses_post((string) $row['answer']) : '';
+                if ($q !== '' && $a !== '') {
+                    $out[] = [ 'question' => $q, 'answer' => $a ];
+                }
+            }
+        }
+        return $out;
+    }
+
+    public static function sanitize_howto_value($value = [], $meta_key = '', $object_type = '') {
+        $out = [];
+        if (is_array($value)) {
+            foreach ($value as $row) {
+                if (!is_array($row)) { continue; }
+                $n = isset($row['name']) ? sanitize_text_field((string) $row['name']) : '';
+                $t = isset($row['text']) ? sanitize_textarea_field((string) $row['text']) : '';
+                if ($n !== '' || $t !== '') {
+                    $out[] = [ 'name' => $n, 'text' => $t ];
+                }
+            }
+        }
+        return $out;
+    }
 
     public function __construct() {
         // Admin UI for per-post meta
@@ -97,6 +133,14 @@ class Plugin {
                 [$this, 'render_answers_metabox'],
                 $type,
                 'normal',
+                'default'
+            );
+            add_meta_box(
+                'savejson_sharing',
+                __('SAVE JSON — Social Sharing', 'save-json-content'),
+                [$this, 'render_sharing_metabox'],
+                $type,
+                'side',
                 'default'
             );
         }
@@ -342,6 +386,32 @@ class Plugin {
         <?php
     }
 
+    public function render_sharing_metabox(\WP_Post $post) {
+        $tw_text = get_post_meta($post->ID, self::META_SHARE_TW_TEXT, true);
+        $tw_tags = get_post_meta($post->ID, self::META_SHARE_TW_TAGS, true);
+        $fb_text = get_post_meta($post->ID, self::META_SHARE_FB_TEXT, true);
+        $li_text = get_post_meta($post->ID, self::META_SHARE_LI_TEXT, true);
+        $permalink = get_permalink($post);
+        ?>
+        <p><strong><?php echo esc_html__('Twitter/X', 'save-json-content'); ?></strong></p>
+        <textarea name="savejson_share_twitter_text" rows="3" style="width:100%;" placeholder="<?php echo esc_attr__('Short compelling copy for X (Twitter).', 'save-json-content'); ?>"><?php echo esc_textarea((string)$tw_text); ?></textarea>
+        <p><label><?php echo esc_html__('Hashtags (comma separated, no #)', 'save-json-content'); ?></label>
+        <input type="text" name="savejson_share_twitter_tags" value="<?php echo esc_attr((string)$tw_tags); ?>" style="width:100%;" placeholder="seo,wordpress,howto" /></p>
+        <p><a class="button" target="_blank" rel="noopener" href="<?php echo esc_url('https://twitter.com/intent/tweet?text=' . rawurlencode((string)$tw_text) . '&url=' . rawurlencode($permalink) . '&hashtags=' . rawurlencode(str_replace('#','', (string)$tw_tags))); ?>"><?php echo esc_html__('Preview Tweet', 'save-json-content'); ?></a></p>
+
+        <hr/>
+        <p><strong><?php echo esc_html__('Facebook', 'save-json-content'); ?></strong></p>
+        <textarea name="savejson_share_facebook_text" rows="3" style="width:100%;" placeholder="<?php echo esc_attr__('Post copy for Facebook.', 'save-json-content'); ?>"><?php echo esc_textarea((string)$fb_text); ?></textarea>
+        <p><a class="button" target="_blank" rel="noopener" href="<?php echo esc_url('https://www.facebook.com/sharer/sharer.php?u=' . rawurlencode($permalink) . '&quote=' . rawurlencode((string)$fb_text)); ?>"><?php echo esc_html__('Preview Facebook Share', 'save-json-content'); ?></a></p>
+
+        <hr/>
+        <p><strong><?php echo esc_html__('LinkedIn', 'save-json-content'); ?></strong></p>
+        <textarea name="savejson_share_linkedin_text" rows="3" style="width:100%;" placeholder="<?php echo esc_attr__('Post copy for LinkedIn.', 'save-json-content'); ?>"><?php echo esc_textarea((string)$li_text); ?></textarea>
+        <p><a class="button" target="_blank" rel="noopener" href="<?php echo esc_url('https://www.linkedin.com/sharing/share-offsite/?url=' . rawurlencode($permalink)); ?>"><?php echo esc_html__('Open LinkedIn Share', 'save-json-content'); ?></a></p>
+        <p class="description"><?php echo esc_html__('LinkedIn ignores prefilled text in URLs; copy the text above when sharing.', 'save-json-content'); ?></p>
+        <?php
+    }
+
     /* ===========================
      * Editor (Gutenberg) sidebar
      * =========================== */
@@ -454,6 +524,94 @@ class Plugin {
                 'sanitize_callback' => 'sanitize_textarea_field',
                 'auth_callback' => function() { return current_user_can('edit_posts'); },
             ]);
+
+            // FAQ (array of {question, answer}) for REST
+            register_post_meta($type, self::META_FAQ, [
+                'single' => true,
+                'type'   => 'array',
+                'show_in_rest' => [
+                    'schema' => [
+                        'type'  => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'question' => ['type' => 'string'],
+                                'answer'   => ['type' => 'string'],
+                            ],
+                            'additionalProperties' => false,
+                        ],
+                    ],
+                ],
+                'sanitize_callback' => [self::class, 'sanitize_faq_value'],
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+
+            // HowTo (array of {name, text}) for REST
+            register_post_meta($type, self::META_HOWTO, [
+                'single' => true,
+                'type'   => 'array',
+                'show_in_rest' => [
+                    'schema' => [
+                        'type'  => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'name' => ['type' => 'string'],
+                                'text' => ['type' => 'string'],
+                            ],
+                            'additionalProperties' => false,
+                        ],
+                    ],
+                ],
+                'sanitize_callback' => [self::class, 'sanitize_howto_value'],
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+
+            // Head/Footer code — REST‑editable only for users with unfiltered_html
+            register_post_meta($type, self::META_HEAD_CODE, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => function($v){ return (string) $v; },
+                'auth_callback' => function() { return current_user_can('unfiltered_html'); },
+            ]);
+            register_post_meta($type, self::META_FOOT_CODE, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => function($v){ return (string) $v; },
+                'auth_callback' => function() { return current_user_can('unfiltered_html'); },
+            ]);
+
+            // Sharing composer (REST)
+            register_post_meta($type, self::META_SHARE_TW_TEXT, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_textarea_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+            register_post_meta($type, self::META_SHARE_TW_TAGS, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_text_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+            register_post_meta($type, self::META_SHARE_FB_TEXT, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_textarea_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+            register_post_meta($type, self::META_SHARE_LI_TEXT, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_textarea_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
         }
     }
 
@@ -547,6 +705,16 @@ class Plugin {
         if ($tw_card   !== '') { update_post_meta($post_id, self::META_TW_CARD,   $tw_card);   } else { delete_post_meta($post_id, self::META_TW_CARD); }
         if ($tw_site   !== '') { update_post_meta($post_id, self::META_TW_SITE,   $tw_site);   } else { delete_post_meta($post_id, self::META_TW_SITE); }
         if ($tw_creator!== '') { update_post_meta($post_id, self::META_TW_CREATOR,$tw_creator);} else { delete_post_meta($post_id, self::META_TW_CREATOR); }
+
+        // Social sharing composer
+        $tw_text = isset($_POST['savejson_share_twitter_text']) ? sanitize_textarea_field($_POST['savejson_share_twitter_text']) : '';
+        $tw_tags = isset($_POST['savejson_share_twitter_tags']) ? sanitize_text_field(str_replace('#','', (string) $_POST['savejson_share_twitter_tags'])) : '';
+        $fb_text = isset($_POST['savejson_share_facebook_text']) ? sanitize_textarea_field($_POST['savejson_share_facebook_text']) : '';
+        $li_text = isset($_POST['savejson_share_linkedin_text']) ? sanitize_textarea_field($_POST['savejson_share_linkedin_text']) : '';
+        if ($tw_text !== '') { update_post_meta($post_id, self::META_SHARE_TW_TEXT, $tw_text); } else { delete_post_meta($post_id, self::META_SHARE_TW_TEXT); }
+        if ($tw_tags !== '') { update_post_meta($post_id, self::META_SHARE_TW_TAGS, $tw_tags); } else { delete_post_meta($post_id, self::META_SHARE_TW_TAGS); }
+        if ($fb_text !== '') { update_post_meta($post_id, self::META_SHARE_FB_TEXT, $fb_text); } else { delete_post_meta($post_id, self::META_SHARE_FB_TEXT); }
+        if ($li_text !== '') { update_post_meta($post_id, self::META_SHARE_LI_TEXT, $li_text); } else { delete_post_meta($post_id, self::META_SHARE_LI_TEXT); }
     }
 
     /* ===========================
