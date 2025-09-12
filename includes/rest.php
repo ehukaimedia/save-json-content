@@ -133,9 +133,9 @@ class Rest {
             'post_type'   => $type,
             'post_status' => $status,
         ];
-        if ($title !== '')  { $postarr['post_title'] = $title; }
-        if ($content !== ''){ $postarr['post_content'] = $content; }
-        if ($excerpt !== ''){ $postarr['post_excerpt'] = $excerpt; }
+        if ($title !== '')  { $postarr['post_title'] = wp_slash($title); }
+        if ($content !== ''){ $postarr['post_content'] = wp_slash($content); }
+        if ($excerpt !== ''){ $postarr['post_excerpt'] = wp_slash($excerpt); }
         if ($slug_new !== ''){ $postarr['post_name'] = $slug_new; }
 
         if ($is_update) {
@@ -173,6 +173,11 @@ class Rest {
         if ($feat_url !== '') {
             $att_id = self::sideload_image($feat_url, $post_id);
             if ($att_id) { set_post_thumbnail($post_id, $att_id); }
+        }
+
+        // If content was provided but not persisted (rare), try once more with slashed content
+        if ($content !== '' && get_post_field('post_content', $post_id) === '') {
+            wp_update_post(['ID' => $post_id, 'post_content' => wp_slash($content)]);
         }
 
         $resp = [
