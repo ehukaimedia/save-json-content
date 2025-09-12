@@ -612,6 +612,28 @@ class Plugin {
                 'sanitize_callback' => 'sanitize_textarea_field',
                 'auth_callback' => function() { return current_user_can('edit_posts'); },
             ]);
+            // Image planning (REST)
+            register_post_meta($type, self::META_IMG_PROMPT_GEMINI, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_textarea_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+            register_post_meta($type, self::META_ADOBE_QUERY, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_text_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
+            register_post_meta($type, self::META_ADOBE_DESC, [
+                'single' => true,
+                'type'   => 'string',
+                'show_in_rest' => true,
+                'sanitize_callback' => 'sanitize_textarea_field',
+                'auth_callback' => function() { return current_user_can('edit_posts'); },
+            ]);
         }
     }
 

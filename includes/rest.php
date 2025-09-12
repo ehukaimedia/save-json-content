@@ -218,6 +218,9 @@ class Rest {
             Plugin::META_SHARE_TW_TAGS => 'string',
             Plugin::META_SHARE_FB_TEXT => 'textarea',
             Plugin::META_SHARE_LI_TEXT => 'textarea',
+            Plugin::META_IMG_PROMPT_GEMINI => 'textarea',
+            Plugin::META_ADOBE_QUERY       => 'string',
+            Plugin::META_ADOBE_DESC        => 'textarea',
         ];
 
         foreach ($pairs as $key => $kind) {
@@ -337,6 +340,9 @@ class Rest {
                                                     Plugin::META_SHARE_TW_TAGS => [ 'type' => 'string' ],
                                                     Plugin::META_SHARE_FB_TEXT => [ 'type' => 'string' ],
                                                     Plugin::META_SHARE_LI_TEXT => [ 'type' => 'string' ],
+                                                    Plugin::META_IMG_PROMPT_GEMINI => [ 'type' => 'string' ],
+                                                    Plugin::META_ADOBE_QUERY       => [ 'type' => 'string' ],
+                                                    Plugin::META_ADOBE_DESC        => [ 'type' => 'string' ],
                                                     Plugin::META_FAQ        => [ 'type' => 'array', 'items' => [ 'type' => 'object', 'properties' => [ 'question' => [ 'type' => 'string' ], 'answer' => [ 'type' => 'string' ] ] ] ],
                                                     Plugin::META_HOWTO      => [ 'type' => 'array', 'items' => [ 'type' => 'object', 'properties' => [ 'name' => [ 'type' => 'string' ], 'text' => [ 'type' => 'string' ] ] ] ],
                                                 ],

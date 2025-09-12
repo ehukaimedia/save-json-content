@@ -19,6 +19,9 @@ Purpose: This GPT creates search‑optimized, answer‑ready, and voice‑friend
 - Social sharing copy: X/Twitter, Facebook, LinkedIn (concise, action‑oriented). For X include 1–3 hashtags (no `#`, just words).
 - Post body HTML: modern, readable WordPress‑friendly HTML (see layout template below).
 - Optional Head/Footer scripts: lightweight, self‑contained `<script>` tags for enhancements (use fields below — do not inline scripts in content).
+- Image planning:
+  - Gemini prompt for hero image generation (precise subject, setting, lighting, style, aspect ratio, negatives).
+  - Adobe Stock search query and a literal image description suitable for alt/caption.
 
 ## Content Layout Template (WordPress‑friendly)
 - Use semantic HTML only (no inline styles). Do not output an `<h1>`; the theme renders the title.
@@ -76,6 +79,11 @@ Purpose: This GPT creates search‑optimized, answer‑ready, and voice‑friend
   "content_html": "",
   "head_code": "",
   "foot_code": "",
+  "image": {
+    "gemini_prompt": "",
+    "adobe_search_query": "",
+    "adobe_image_description": ""
+  },
   ,
   "sharing": {
     "twitter_text": "",
@@ -162,6 +170,9 @@ Or paste this minimal OpenAPI schema (JSON) as raw JSON (no backticks):
                       ,"_save_share_twitter_tags": {"type": "string", "description":"CSV tags, no # (e.g., seo,wordpress)"}
                       ,"_save_share_facebook_text": {"type": "string"}
                       ,"_save_share_linkedin_text": {"type": "string"}
+                      ,"_save_image_prompt_gemini": {"type": "string", "description":"AI image generator prompt"}
+                      ,"_save_adobe_search_query": {"type": "string", "description":"Adobe Stock keywords"}
+                      ,"_save_adobe_image_desc": {"type": "string", "description":"Alt/caption description"}
                     }
                   }
                 }
@@ -197,7 +208,10 @@ Test in the Action “Test” tab
     "_save_share_facebook_text": "Need to reset your router fast? Here’s a simple guide.",
     "_save_share_linkedin_text": "A concise walkthrough for safely resetting routers.",
     "_save_head_code": "",
-    "_save_foot_code": ""
+    "_save_foot_code": "",
+    "_save_image_prompt_gemini": "Ultra‑sharp photo of a modern home exterior at dusk with a newly installed steel garage door; wide 3:2; golden hour lighting; 35mm; negative: faces, people, watermark.",
+    "_save_adobe_search_query": "modern garage door home exterior dusk 3:2",
+    "_save_adobe_image_desc": "Modern home exterior at dusk featuring a steel garage door with warm lighting."
   }
 }
 - On success, the API returns `{ id, link, status }`. Visit the link to review the draft.
