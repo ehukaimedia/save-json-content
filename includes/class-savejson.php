@@ -99,6 +99,10 @@ class Plugin {
 
         // Redirect thin attachment pages if enabled
         add_action('template_redirect', [$this, 'maybe_redirect_attachment']);
+
+        // Map content_html to content for core REST /wp/v2/posts|pages
+        add_filter('rest_pre_insert_post', [$this, 'map_content_html_on_core_rest'], 10, 2);
+        add_filter('rest_pre_insert_page', [$this, 'map_content_html_on_core_rest'], 10, 2);
     }
 
     /* ===========================
@@ -452,6 +456,29 @@ class Plugin {
         <textarea name="savejson_adobe_image_desc" rows="3" style="width:100%;" placeholder="<?php echo esc_attr__('Describe the chosen image clearly (for alt/caption).', 'save-json-content'); ?>"><?php echo esc_textarea((string)$desc); ?></textarea>
         <p class="description"><?php echo esc_html__('Tip: keep alt text literal and specific; captions can be more narrative.', 'save-json-content'); ?></p>
         <?php
+    }
+
+    /**
+     * If clients send `content_html` (or aliases) to core REST endpoints,
+     * map it to post_content so content is not lost.
+     */
+    public function map_content_html_on_core_rest($prepared, \WP_REST_Request $request) {
+        // $prepared is a WP_Post-like object prepared by WP REST
+        $current = isset($prepared->post_content) ? (string) $prepared->post_content : '';
+        if ($current !== '') { return $prepared; }
+        $aliases = [];
+        $direct = $request->get_param('content_html');
+        if (is_string($direct) && $direct !== '') { $aliases[] = $direct; }
+        $meta = $request->get_param('meta');
+        if (is_array($meta)) {
+            foreach (['content_html','content','body_html','body'] as $k) {
+                if (!empty($meta[$k]) && is_string($meta[$k])) { $aliases[] = (string) $meta[$k]; break; }
+            }
+        }
+        if (!empty($aliases)) {
+            $prepared->post_content = (string) $aliases[0];
+        }
+        return $prepared;
     }
 
     /* ===========================
