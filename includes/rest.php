@@ -101,6 +101,12 @@ class Rest {
         if ($content === '' && $content_html !== '') { $content = $content_html; }
         $excerpt = (string) ($req->get_param('excerpt') ?: '');
         $meta    = (array) ($req->get_param('meta') ?: []);
+        // Fallback: some clients nest body under meta; accept common aliases
+        if ($content === '') {
+            foreach (['content_html','content','body_html','body'] as $k) {
+                if (!empty($meta[$k]) && is_string($meta[$k])) { $content = (string) $meta[$k]; unset($meta[$k]); break; }
+            }
+        }
         $cats    = $req->get_param('categories');
         $tags    = $req->get_param('tags');
         $feat_url= (string) ($req->get_param('featured_image_url') ?: '');
