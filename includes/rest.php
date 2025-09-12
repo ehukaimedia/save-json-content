@@ -4,7 +4,8 @@ namespace SaveJSON;
 if (!defined('ABSPATH')) { exit; }
 
 class Rest {
-    private static bool $authed_via_token = false;
+    // Avoid typed property for broader PHP compatibility
+    private static $authed_via_token = false;
     public static function init() : void {
         add_action('rest_api_init', [__CLASS__, 'register_routes']);
     }
