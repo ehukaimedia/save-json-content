@@ -31,6 +31,10 @@ class Plugin {
     const META_SHARE_TW_TAGS  = '_save_share_twitter_tags'; // csv list without '#'
     const META_SHARE_FB_TEXT  = '_save_share_facebook_text';
     const META_SHARE_LI_TEXT  = '_save_share_linkedin_text';
+    // Image planning
+    const META_IMG_PROMPT_GEMINI = '_save_image_prompt_gemini';
+    const META_ADOBE_QUERY       = '_save_adobe_search_query';
+    const META_ADOBE_DESC        = '_save_adobe_image_desc';
 
     // Sanitizers for complex REST meta
     public static function sanitize_faq_value($value = [], $meta_key = '', $object_type = '') {
@@ -139,6 +143,22 @@ class Plugin {
                 'savejson_sharing',
                 __('SAVE JSON — Social Sharing', 'save-json-content'),
                 [$this, 'render_sharing_metabox'],
+                $type,
+                'side',
+                'default'
+            );
+            add_meta_box(
+                'savejson_image_prompt',
+                __('SAVE JSON — Image Prompt (Gemini)', 'save-json-content'),
+                [$this, 'render_image_prompt_metabox'],
+                $type,
+                'side',
+                'default'
+            );
+            add_meta_box(
+                'savejson_adobe_stock',
+                __('SAVE JSON — Adobe Stock (Search + Desc)', 'save-json-content'),
+                [$this, 'render_adobe_stock_metabox'],
                 $type,
                 'side',
                 'default'
@@ -409,6 +429,28 @@ class Plugin {
         <textarea name="savejson_share_linkedin_text" rows="3" style="width:100%;" placeholder="<?php echo esc_attr__('Post copy for LinkedIn.', 'save-json-content'); ?>"><?php echo esc_textarea((string)$li_text); ?></textarea>
         <p><a class="button" target="_blank" rel="noopener" href="<?php echo esc_url('https://www.linkedin.com/sharing/share-offsite/?url=' . rawurlencode($permalink)); ?>"><?php echo esc_html__('Open LinkedIn Share', 'save-json-content'); ?></a></p>
         <p class="description"><?php echo esc_html__('LinkedIn ignores prefilled text in URLs; copy the text above when sharing.', 'save-json-content'); ?></p>
+        <?php
+    }
+
+    public function render_image_prompt_metabox(\WP_Post $post) {
+        $prompt = get_post_meta($post->ID, self::META_IMG_PROMPT_GEMINI, true);
+        ?>
+        <p class="description"><?php echo esc_html__('Write a precise prompt for an AI image generator (Gemini). Include subject, setting, lighting, camera angle, style, color palette, aspect ratio (e.g., 3:2), and negative cues (what to avoid).', 'save-json-content'); ?></p>
+        <textarea name="savejson_image_prompt_gemini" rows="6" style="width:100%;" placeholder="<?php echo esc_attr__('Ultra‑sharp photo of…', 'save-json-content'); ?>"><?php echo esc_textarea((string)$prompt); ?></textarea>
+        <?php
+    }
+
+    public function render_adobe_stock_metabox(\WP_Post $post) {
+        $query = get_post_meta($post->ID, self::META_ADOBE_QUERY, true);
+        $desc  = get_post_meta($post->ID, self::META_ADOBE_DESC, true);
+        $search_url = 'https://stock.adobe.com/search?k=' . rawurlencode((string)$query);
+        ?>
+        <p><label><strong><?php echo esc_html__('Search query', 'save-json-content'); ?></strong></label>
+        <input type="text" name="savejson_adobe_search_query" value="<?php echo esc_attr((string)$query); ?>" style="width:100%;" placeholder="<?php echo esc_attr__('e.g., modern garage door home exterior dusk', 'save-json-content'); ?>" /></p>
+        <p><a class="button" target="_blank" rel="noopener" href="<?php echo esc_url($search_url); ?>"><?php echo esc_html__('Open Adobe Stock search', 'save-json-content'); ?></a></p>
+        <p><label><strong><?php echo esc_html__('Image description (alt/caption)', 'save-json-content'); ?></strong></label></p>
+        <textarea name="savejson_adobe_image_desc" rows="3" style="width:100%;" placeholder="<?php echo esc_attr__('Describe the chosen image clearly (for alt/caption).', 'save-json-content'); ?>"><?php echo esc_textarea((string)$desc); ?></textarea>
+        <p class="description"><?php echo esc_html__('Tip: keep alt text literal and specific; captions can be more narrative.', 'save-json-content'); ?></p>
         <?php
     }
 
@@ -737,6 +779,14 @@ class Plugin {
         if ($tw_tags !== '') { update_post_meta($post_id, self::META_SHARE_TW_TAGS, $tw_tags); } else { delete_post_meta($post_id, self::META_SHARE_TW_TAGS); }
         if ($fb_text !== '') { update_post_meta($post_id, self::META_SHARE_FB_TEXT, $fb_text); } else { delete_post_meta($post_id, self::META_SHARE_FB_TEXT); }
         if ($li_text !== '') { update_post_meta($post_id, self::META_SHARE_LI_TEXT, $li_text); } else { delete_post_meta($post_id, self::META_SHARE_LI_TEXT); }
+
+        // Image planning
+        $img_prompt = isset($_POST['savejson_image_prompt_gemini']) ? sanitize_textarea_field($_POST['savejson_image_prompt_gemini']) : '';
+        $adobe_q    = isset($_POST['savejson_adobe_search_query']) ? sanitize_text_field($_POST['savejson_adobe_search_query']) : '';
+        $adobe_d    = isset($_POST['savejson_adobe_image_desc']) ? sanitize_textarea_field($_POST['savejson_adobe_image_desc']) : '';
+        if ($img_prompt !== '') { update_post_meta($post_id, self::META_IMG_PROMPT_GEMINI, $img_prompt); } else { delete_post_meta($post_id, self::META_IMG_PROMPT_GEMINI); }
+        if ($adobe_q !== '')    { update_post_meta($post_id, self::META_ADOBE_QUERY, $adobe_q); } else { delete_post_meta($post_id, self::META_ADOBE_QUERY); }
+        if ($adobe_d !== '')    { update_post_meta($post_id, self::META_ADOBE_DESC, $adobe_d); } else { delete_post_meta($post_id, self::META_ADOBE_DESC); }
     }
 
     /* ===========================
